@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Low Poly Game</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    
+    <div id="loading-screen">
+        <video autoplay muted loop playsinline class="bg-video">
+            <source src="loadingscreen.mp4" type="video/mp4">
+        </video>
+        <div class="loading-overlay">
+            <p class="minimal-text">loading...</p>
+            <div class="progress-bar-container">
+                <div class="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="character-select-screen">
+        <div class="cards-container">
+            <div class="char-card" id="card-boy" onclick="selectCharacter('boy')">
+                <div class="canvas-container" id="canvas-boy-box"></div>
+            </div>
+            <div class="char-card" id="card-girl" onclick="selectCharacter('girl')">
+                <div class="canvas-container" id="canvas-girl-box"></div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="game-canvas" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10;"></canvas>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
