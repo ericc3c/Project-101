@@ -1,47 +1,1709 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Low Poly Game</title>
-    <link rel="stylesheet" href="style.css">
-    
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Mugen</title>
+  <link rel="stylesheet" href="./assets/fonts/mugen-fonts.css" />
+  <style>
+    :root {
+      --font-mugen-title: 'Cormorant Garamond', 'Shippori Mincho', 'Cinzel Decorative', 'Palatino Linotype', 'Book Antiqua', 'Georgia', serif;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: #000;
+      touch-action: manipulation;
+      font-family: 'Shippori Mincho', 'Cormorant Garamond', 'Georgia', serif;
+    }
+    canvas {
+      display: block;
+      position: fixed;
+      inset: 0;
+      width: 100vw !important;
+      width: 100dvw !important;
+      height: 100vh !important;
+      height: 100dvh !important;
+      transform: translateZ(0);
+      z-index: 1;
+      background: #000;
+    }
+    /* The wash is black on purpose. The chapter title has to sit above it,
+       or the card is painted and the player only sees black until the world. */
+    #ink-ui canvas.wash { z-index: 2; }
+    #ink-ui .card,
+    #ink-ui .closing,
+    #ink-ui .credits { z-index: 6; }
+    #lobby-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background: #000 url("./assets/ui/lobby.jpg") center 42% / cover no-repeat;
+      pointer-events: none;
+    }
+    /* Hide the world canvas on the title, but never the ink-wash canvas.
+       Hiding every canvas left the lobby painting showing through the chapter card. */
+    body[data-lobby="1"] canvas:not(.wash) { visibility: hidden !important; }
+    body:not([data-lobby="1"]) #lobby-bg { display: none; }
+    /* Chapter card / ink wash: solid black, not the lobby painting. */
+    body:has(#ink-ui .card.on) #lobby-bg,
+    body:has(#ink-ui .closing.on) #lobby-bg,
+    body:has(#ink-ui canvas.wash[style*="display: block"]) #lobby-bg,
+    body:has(#ink-ui canvas.wash[style*="display:block"]) #lobby-bg {
+      display: none !important;
+    }
+    body:has(#ink-ui .card.on),
+    body:has(#ink-ui .closing.on),
+    body:has(#ink-ui canvas.wash[style*="display: block"]),
+    body:has(#ink-ui canvas.wash[style*="display:block"]) {
+      background: #000 !important;
+    }
+    .mugen-calligraphic-title {
+      font-family: var(--font-mugen-title) !important;
+      font-style: italic !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.05em !important;
+    }
+    .mugen-calligraphic-title > * {
+      font-style: normal;
+      letter-spacing: normal;
+    }
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 1000000;
+      background: #cfc2a9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: opacity 0.75s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #loading-screen.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #loading-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 18.5% 52%;
+      transform: scale(1.06) translateZ(0);
+      pointer-events: none;
+    }
+    @media (orientation: landscape) {
+      #loading-video {
+        object-position: center center;
+        transform: scale(1.035) translateZ(0);
+      }
+      /* Keep the wanderer framed the way the portrait crop does, instead of
+         spreading the wide painting into a thin strip. */
+      #lobby-bg {
+        background-color: #000;
+        background-size: auto 168%;
+        background-position: 46% 38%;
+      }
+      #joystick-zone {
+        width: 104px;
+        height: 104px;
+        left: max(12px, env(safe-area-inset-left));
+        bottom: max(10px, env(safe-area-inset-bottom));
+      }
+      #joystick-knob {
+        width: 40px;
+        height: 40px;
+        margin-left: -20px;
+        margin-top: -20px;
+      }
+      #action-cluster {
+        width: 200px;
+        height: 176px;
+        right: max(8px, env(safe-area-inset-right));
+        bottom: max(8px, env(safe-area-inset-bottom));
+        transform: scale(0.82);
+        transform-origin: 100% 100%;
+      }
+    }
+    #loading-bar-wrap {
+      position: absolute;
+      left: 50%;
+      bottom: max(10%, calc(env(safe-area-inset-bottom) + 24px));
+      transform: translateX(-50%);
+      width: min(78vw, 360px);
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 2;
+    }
+    #brush-bar-svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    #top-bar {
+      position: fixed;
+      top: max(8px, env(safe-area-inset-top));
+      left: max(8px, env(safe-area-inset-left));
+      z-index: 999999;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    #side-bar {
+      position: fixed;
+      top: max(8px, env(safe-area-inset-top));
+      right: max(8px, env(safe-area-inset-right));
+      z-index: 999999;
+      display: flex;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    .mini-btn {
+      background: rgba(20, 18, 15, 0.86);
+      color: #f0e6d2;
+      border: 1px solid rgba(240, 230, 210, 0.45);
+      border-radius: 6px;
+      font: 600 11px/1 monospace;
+      padding: 7px 10px;
+      cursor: pointer;
+      pointer-events: auto;
+      touch-action: manipulation;
+      transform: translateZ(0);
+    }
+    .mini-btn:active { transform: scale(0.94) translateZ(0); }
+    .mini-btn.active { border-color: #e6b86a; color: #e6b86a; }
+    body[data-game-state="menu"] #btn-pause-menu { display: none !important; }
+    #local-hud {
+      position: fixed;
+      top: calc(max(8px, env(safe-area-inset-top)) + 34px);
+      left: max(8px, env(safe-area-inset-left));
+      z-index: 999998;
+      font: 10px/1.35 monospace;
+      color: #00ff88;
+      background: rgba(0, 0, 0, 0.88);
+      border: 1px solid #00ff88;
+      border-radius: 6px;
+      padding: 6px 8px;
+      max-width: 88vw;
+      max-height: 28vh;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+      pointer-events: auto;
+      touch-action: pan-y;
+    }
+    #mobile-controls {
+      position: fixed;
+      inset: 0;
+      z-index: 99990;
+      pointer-events: none;
+    }
+    body[data-game-state="menu"] #mobile-controls,
+    body[data-game-state="menu"] #mobile-controls *,
+    body.ctrl-off #mobile-controls,
+    body.ctrl-off #mobile-controls * {
+      display: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+    #look-zone {
+      position: absolute;
+      inset: 0;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    #joystick-zone {
+      position: absolute;
+      left: max(22px, env(safe-area-inset-left));
+      bottom: max(24px, env(safe-area-inset-bottom));
+      width: 136px;
+      height: 136px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(25, 22, 18, 0.28) 0%, rgba(20, 17, 14, 0.72) 100%);
+      border: 1.5px solid rgba(240, 230, 210, 0.44);
+      pointer-events: auto;
+      touch-action: none;
+      transform: translateZ(0);
+    }
+    #joystick-zone::after {
+      content: '';
+      position: absolute;
+      inset: 14px;
+      border-radius: 50%;
+      border: 1px dashed rgba(240, 230, 210, 0.22);
+      pointer-events: none;
+    }
+    #joystick-knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 50px;
+      height: 50px;
+      margin-left: -25px;
+      margin-top: -25px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(245, 235, 215, 0.94), rgba(185, 168, 140, 0.85));
+      border: 2px solid rgba(30, 25, 20, 0.8);
+      pointer-events: none;
+      will-change: transform;
+      transform: translate3d(0px, 0px, 0);
+    }
+    #joystick-knob.sprinting {
+      background: radial-gradient(circle at 35% 35%, #ffe09e, #d48b3b);
+      border-color: #fff2d6;
+    }
+    #joystick-knob.walking {
+      background: radial-gradient(circle at 35% 35%, #f4efe4, #b7aa96);
+    }
+    #action-cluster {
+      position: absolute;
+      right: max(14px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom));
+      width: 225px;
+      height: 205px;
+      pointer-events: none;
+    }
+    .ctrl-btn {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(32, 27, 22, 0.78) 0%, rgba(18, 15, 12, 0.88) 100%);
+      color: #f4ead5;
+      border: 1.5px solid rgba(240, 230, 210, 0.52);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      pointer-events: auto;
+      touch-action: none;
+      transform: translateZ(0);
+    }
+    .ctrl-btn span.sub {
+      font-size: 8px;
+      font-weight: 500;
+      opacity: 0.78;
+      margin-top: 1px;
+      pointer-events: none;
+    }
+    .ctrl-btn.pressed, .ctrl-btn.locked {
+      background: rgba(212, 145, 65, 0.9);
+      color: #1a1410;
+      border-color: #fff2d6;
+      transform: scale(0.93) translateZ(0);
+    }
+    #btn-jump { right: 4px; bottom: 4px; width: 64px; height: 64px; font-size: 12px; }
+    #btn-attack { right: 78px; bottom: 8px; width: 64px; height: 64px; font-size: 12px; border-color: rgba(235, 165, 145, 0.72); }
+    #btn-sprint { right: 152px; bottom: 10px; width: 54px; height: 54px; font-size: 10px; }
+    #btn-ink { right: 6px; bottom: 78px; width: 56px; height: 56px; font-size: 11px; border-color: rgba(205, 220, 245, 0.65); }
+    #btn-parry { right: 74px; bottom: 80px; width: 56px; height: 56px; font-size: 10px; border-color: rgba(235, 210, 150, 0.72); }
+    #btn-interact { right: 10px; bottom: 144px; width: 46px; height: 46px; font-size: 9px; }
+    #btn-gourd { right: 66px; bottom: 144px; width: 46px; height: 46px; font-size: 9px; }
+    #patch-download {
+      position: fixed;
+      z-index: 1000002;
+      top: max(12px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(231, 220, 193, 0.75);
+      background: rgba(16, 14, 12, 0.9);
+      color: #e7dcc1;
+      font: italic 15px/1 "Palatino Linotype", Palatino, Georgia, serif;
+      letter-spacing: 0.04em;
+      text-decoration: none;
+      pointer-events: auto;
+    }
+  </style>
+  <script>
+(function () {
+  "use strict";
+  var phone = /iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+    (window.matchMedia && window.matchMedia("(pointer: coarse)").matches &&
+      !(window.matchMedia("(any-pointer: fine)").matches));
+  var Shell = {
+    phone: phone,
+    nativeDpr: window.devicePixelRatio || 1,
+    targetMaxDpr: 1,
+    currentDpr: 1,
+    hudEl: null,
+    logs: [],
+    totalAssets: 0,
+    loadedAssets: 0,
+    displayedProgress: 0.04,
+    targetProgress: 0.04,
+    loadingFinished: false,
+    lastAssetTime: performance.now(),
+    pendingHeavy: 0,
+    lockedEl: null,
+    pointerLockShim: false,
+    masterVol: 1,
+    musicVol: 1,
+    audioContexts: [],
+    nativeFetch: window.fetch.bind(window),
+    gameState: "menu",
+    bgmGain: null,
+    bgmCtx: null,
+    bgmStarted: false
+  };
+  window.MugenShell = Shell;
+
+  try {
+    var saveRaw = localStorage.getItem("sumiro.save.v1") || localStorage.getItem("ink_wanderer.save.v1");
+    if (saveRaw) {
+      var save = JSON.parse(saveRaw);
+      if (save && save.options) {
+        if (typeof save.options.master === "number") Shell.masterVol = clamp01(save.options.master);
+        if (typeof save.options.music === "number") Shell.musicVol = clamp01(save.options.music);
+      }
+    }
+  } catch (err) {}
+
+  function dprFor(mode) {
+    var native = Shell.nativeDpr || 1;
+    if (Shell.phone) {
+      if (mode === "1.85") return Math.min(1.75, native);
+      if (mode === "1.5") return Math.min(1.5, native);
+      return Math.min(1.3, native);
+    }
+    if (mode === "1.85") return Math.min(1.85, native);
+    if (mode === "1.5") return Math.min(1.5, native);
+    return Math.min(1.5, Math.max(1, native));
+  }
+  function dprCeil(mode) {
+    var native = Shell.nativeDpr || 1;
+    if (!Shell.phone) return dprFor(mode);
+    if (mode === "1.85") return Math.min(1.75, native);
+    if (mode === "1.5") return Math.min(1.55, native);
+    return Math.min(1.5, native);
+  }
+  function dprFloor(mode) {
+    if (!Shell.phone) return 1;
+    if (mode === "1.85") return 1.35;
+    if (mode === "1.5") return 1.25;
+    return 1.15;
+  }
+  function profileFor(mode) {
+    if (!Shell.phone) return null;
+    if (mode === "1.85") return { shadeH: 1600, ssMax: 1, shadow: 1536, shadowEvery: 1 };
+    if (mode === "1.5") return { shadeH: 1400, ssMax: 1, shadow: 1280, shadowEvery: 1 };
+    return { shadeH: 1280, ssMax: 1, shadow: 1024, shadowEvery: 2 };
+  }
+  function applyProfile(mode) {
+    var next = profileFor(mode);
+    if (!next) return;
+    window.__MUGEN_PROFILE = next;
+    var eng = window.__engine;
+    if (!eng || !eng.scene) return;
+    eng.scene.traverse(function (obj) {
+      if (!obj.isDirectionalLight || !obj.castShadow || !obj.shadow) return;
+      if (obj.shadow.mapSize.x === next.shadow) return;
+      obj.shadow.mapSize.set(next.shadow, next.shadow);
+      if (obj.shadow.map) {
+        obj.shadow.map.dispose();
+        obj.shadow.map = null;
+      }
+    });
+  }
+  var storedGfx = localStorage.getItem("mugen_gfx_mode");
+  Shell.gfxMode = storedGfx === "1.5" || storedGfx === "1.85" || storedGfx === "auto" ? storedGfx : "auto";
+  applyProfile(Shell.gfxMode);
+  Shell.currentDpr = Math.max(1, Math.min(dprFor(Shell.gfxMode), Shell.nativeDpr));
+  Shell.targetMaxDpr = Math.max(Shell.currentDpr, Math.min(dprCeil(Shell.gfxMode), Shell.nativeDpr));
+  try {
+    Object.defineProperty(window, "devicePixelRatio", {
+      configurable: true,
+      get: function () { return Shell.currentDpr; }
+    });
+  } catch (err) {}
+
+  function clamp01(n) {
+    n = Number(n);
+    if (!isFinite(n)) return 0;
+    return Math.max(0, Math.min(1, n));
+  }
+
+  function updateHud(msg, isErr) {
+    Shell.logs.push((isErr ? "[ERR] " : "[OK] ") + msg);
+    if (Shell.logs.length > 18) Shell.logs.shift();
+    var hud = Shell.hudEl;
+    if (!hud) return;
+    if (isErr) {
+      hud.style.borderColor = "#ff5555";
+      hud.style.color = "#ffaaaa";
+      hud.style.display = "block";
+    }
+    if (hud.style.display === "block") hud.textContent = Shell.logs.join("\n");
+  }
+
+  var nativeSetTarget = AudioParam.prototype.setTargetAtTime;
+  var volumeParams = [];
+  AudioParam.prototype.setTargetAtTime = function (value, startTime, timeConstant) {
+    if (typeof timeConstant === "number" && Math.abs(timeConstant - 0.04) < 1e-6 && value >= 0 && value <= 1.001) {
+      var idx = volumeParams.indexOf(this);
+      if (idx === -1) {
+        volumeParams.push(this);
+        idx = volumeParams.length - 1;
+      }
+      var linear = clamp01(Math.sqrt(value));
+      if (idx === 0) {
+        Shell.masterVol = linear;
+        if (typeof Shell.applyBgmGain === "function") Shell.applyBgmGain();
+      }
+      if (idx === 1) {
+        Shell.musicVol = linear;
+        this.__mugenMusicBus = true;
+      }
+      if (this.__mugenMusicBus) {
+        try { this.cancelScheduledValues(startTime); } catch (err) {}
+        try { this.value = 0; } catch (err) {}
+        if (typeof Shell.applyBgmGain === "function") Shell.applyBgmGain();
+        return nativeSetTarget.call(this, 0, startTime, 0.03);
+      }
+    }
+    return nativeSetTarget.call(this, value, startTime, timeConstant);
+  };
+
+  var NativeAudio = window.AudioContext || window.webkitAudioContext;
+  if (NativeAudio) {
+    var PatchedAudio = function PatchedAudioContext(options) {
+      var ctx = new NativeAudio(options);
+      Shell.audioContexts.push(ctx);
+      queueMicrotask(function () {
+        try { startBgm(); } catch (err) {}
+      });
+      return ctx;
+    };
+    PatchedAudio.prototype = NativeAudio.prototype;
+    window.AudioContext = PatchedAudio;
+    if (window.webkitAudioContext) window.webkitAudioContext = PatchedAudio;
+  }
+
+  function wantsPointerShim() {
+    var ua = navigator.userAgent || "";
+    var ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    var fine = window.matchMedia && window.matchMedia("(any-pointer: fine)").matches;
+    return ios || (coarse && !fine);
+  }
+  try {
+    if (wantsPointerShim()) {
+      Object.defineProperty(document, "pointerLockElement", {
+        configurable: true,
+        get: function () { return Shell.lockedEl; }
+      });
+      Shell.pointerLockShim = true;
+    }
+  } catch (err) {
+    Shell.pointerLockShim = false;
+  }
+  var nativeRequestLock = Element.prototype.requestPointerLock;
+  Element.prototype.requestPointerLock = function () {
+    if (Shell.pointerLockShim) {
+      var changed = Shell.lockedEl !== this;
+      Shell.lockedEl = this;
+      if (changed) document.dispatchEvent(new Event("pointerlockchange"));
+      return Promise.resolve();
+    }
+    var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+    if (coarse || typeof nativeRequestLock !== "function") return Promise.resolve();
+    try {
+      var ret = nativeRequestLock.apply(this, arguments);
+      if (ret && typeof ret.catch === "function") ret.catch(function () {});
+      return ret || Promise.resolve();
+    } catch (err) {
+      return Promise.resolve();
+    }
+  };
+  var nativeExitLock = document.exitPointerLock;
+  document.exitPointerLock = function () {
+    if (Shell.pointerLockShim) {
+      if (Shell.lockedEl) {
+        Shell.lockedEl = null;
+        document.dispatchEvent(new Event("pointerlockchange"));
+      }
+      return;
+    }
+    if (typeof nativeExitLock === "function") {
+      try { nativeExitLock.call(document); } catch (err) {}
+    }
+  };
+
+  try { window.createImageBitmap = undefined; } catch (err) {}
+
+  if (window.CanvasRenderingContext2D) {
+    ["fillText", "strokeText"].forEach(function (name) {
+      var orig = CanvasRenderingContext2D.prototype[name];
+      CanvasRenderingContext2D.prototype[name] = function (text, x, y, maxWidth) {
+        if (typeof text === "string" && /\bsumiro\b/i.test(text)) {
+          text = text.replace(/\bsumiro\b/gi, "Mugen");
         }
-    </script>
+        return orig.call(this, text, x, y, maxWidth);
+      };
+    });
+  }
+
+  function patchGl(gl) {
+    if (!gl || gl.__mugenPatched) return gl;
+    gl.__mugenPatched = true;
+    var ext = gl.getExtension("EXT_texture_filter_anisotropic") || gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic");
+    if (!ext) return gl;
+    ["texParameterf", "texParameteri"].forEach(function (name) {
+      var orig = gl[name].bind(gl);
+      gl[name] = function (target, pname, param) {
+        if (pname === ext.TEXTURE_MAX_ANISOTROPY_EXT && param > 4) param = 4;
+        return orig(target, pname, param);
+      };
+    });
+    return gl;
+  }
+  var nativeGetContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    if (type === "webgl" || type === "webgl2" || type === "experimental-webgl") {
+      var next = Object.assign({}, attrs);
+      if (!next.powerPreference) next.powerPreference = "high-performance";
+      return patchGl(nativeGetContext.call(this, type, next));
+    }
+    return nativeGetContext.call(this, type, attrs);
+  };
+
+  var baseDir = new URL("./", window.location.href).href;
+
+  function toLocalUrl(url) {
+    if (typeof url !== "string") return url;
+    if (!url || url.indexOf("blob:") === 0 || url.indexOf("data:") === 0) return url;
+    var u = url;
+    var marker = "/sumiro/";
+    var at = u.indexOf(marker);
+    if (at !== -1) return baseDir + u.slice(at + marker.length);
+    if (u.indexOf("/assets/") === 0 || u.indexOf("/bundle/") === 0) return baseDir + u.slice(1);
+    if (u.indexOf("../assets/") === 0) return baseDir + u.replace("../assets/", "assets/");
+    if (u.indexOf("./assets/") === 0 || u.indexOf("./bundle/") === 0) return baseDir + u.slice(2);
+    return u;
+  }
+
+  function bumpProgress(done) {
+    if (Shell.loadingFinished) return;
+    Shell.lastAssetTime = performance.now();
+    if (!done) Shell.totalAssets += 1;
+    else Shell.loadedAssets += 1;
+    var ratio = Math.min(0.96, Shell.loadedAssets / Math.max(Shell.totalAssets, 24));
+    if (ratio > Shell.targetProgress) Shell.targetProgress = ratio;
+  }
+
+  function pathOnly(url) {
+    return String(url || "").split("#")[0].split("?")[0];
+  }
+
+  window.fetch = function (input, init) {
+    var url = input;
+    if (typeof input === "string" || input instanceof URL) url = toLocalUrl(String(input));
+    else if (input instanceof Request) url = new Request(toLocalUrl(input.url), input);
+    var urlStr = typeof url === "string" ? url : (url && url.url) || "";
+    var blob = urlStr.indexOf("blob:") === 0 || urlStr.indexOf("data:") === 0;
+    var heavy = /\.(glb|bin)$/i.test(pathOnly(urlStr));
+    if (!blob) bumpProgress(false);
+    var run = function () {
+      return Shell.nativeFetch(url, init).then(function (res) {
+        if (!blob) bumpProgress(true);
+        if (heavy) Shell.pendingHeavy = Math.max(0, Shell.pendingHeavy - 1);
+        if (!res.ok) updateHud("404: " + urlStr.split("/").slice(-2).join("/"), true);
+        return res;
+      }, function (err) {
+        if (!blob) bumpProgress(true);
+        if (heavy) Shell.pendingHeavy = Math.max(0, Shell.pendingHeavy - 1);
+        throw err;
+      });
+    };
+    if (!heavy) return run();
+    Shell.pendingHeavy += 1;
+    var next = glbQueue.then(run, run);
+    glbQueue = next.then(function () {}, function () {});
+    return next;
+  };
+  var glbQueue = Promise.resolve();
+
+  var nativeOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    var rest = Array.prototype.slice.call(arguments, 2);
+    var fixed = typeof url === "string" ? toLocalUrl(url) : url;
+    return nativeOpen.apply(this, [method, fixed].concat(rest));
+  };
+
+  var imgSrc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
+  if (imgSrc && imgSrc.set && imgSrc.get) {
+    Object.defineProperty(HTMLImageElement.prototype, "src", {
+      configurable: true,
+      get: function () { return imgSrc.get.call(this); },
+      set: function (val) {
+        var fixed = typeof val === "string" ? toLocalUrl(val) : val;
+        if (typeof fixed === "string" && fixed.indexOf("data:") !== 0 && fixed.indexOf("blob:") !== 0) {
+          bumpProgress(false);
+          this.addEventListener("load", function () { bumpProgress(true); }, { once: true });
+          this.addEventListener("error", function () { bumpProgress(true); }, { once: true });
+        }
+        imgSrc.set.call(this, fixed);
+      }
+    });
+  }
+
+  var OrigWorker = window.Worker;
+  window.Worker = function Worker(url, options) {
+    var fixed = typeof url === "string" ? toLocalUrl(url) : url;
+    return new OrigWorker(fixed, options);
+  };
+  window.Worker.prototype = OrigWorker.prototype;
+
+  window.addEventListener("error", function (e) {
+    if (e && e.message) updateHud(e.message, true);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    updateHud("Promise: " + (e && e.reason ? (e.reason.message || e.reason) : "reject"), true);
+  });
+
+  Shell.logs.push("Base: " + baseDir + " | GFX: " + Shell.gfxMode.toUpperCase() + " (" + Shell.currentDpr + "x)");
+
+  var LOADING_URLS = ["./loading.mp4", "./assets/loading.mp4", "./assets/ui/loading.mp4"];
+  var loadingVideoReady = false;
+  var loadingVideoFailed = false;
+  var loadingVideoURL = null;
+  var loadingVideoTask = Promise.resolve("./loading.mp4");
+
+  var BGM_FILES = [
+    ["./bgm.mp3", "audio/mpeg"],
+    ["./bgm.mp4", "audio/mp4"],
+    ["./bgm.m4a", "audio/mp4"],
+    ["./bgm.wav", "audio/wav"],
+    ["./music.mp3", "audio/mpeg"],
+    ["./assets/bgm.mp3", "audio/mpeg"],
+    ["./assets/bgm.mp4", "audio/mp4"]
+  ];
+  var bgmTask = null;
+  var bgmEl = null;
+
+  function bgmLevel() {
+    var linear = clamp01(Shell.masterVol) * clamp01(Shell.musicVol);
+    var gain = Math.pow(linear, 0.85);
+    return Shell.gameState === "menu" ? gain * 0.8 : gain;
+  }
+
+  // iOS ignores <audio>.volume. The slider has to move a GainNode, and the
+  // graph has to be built in the same gesture that starts the file.
+  function routeBgm(el) {
+    if (!el || !NativeAudio) return false;
+    if (Shell.bgmRouted && Shell.bgmGain && Shell.bgmGain.context && Shell.bgmGain.context.state !== "closed") return true;
+    var ctx = Shell.bgmCtx;
+    if (!ctx) {
+      for (var i = 0; i < Shell.audioContexts.length; i++) {
+        if (Shell.audioContexts[i] && Shell.audioContexts[i].state !== "closed") {
+          ctx = Shell.audioContexts[i];
+          break;
+        }
+      }
+    }
+    if (!ctx) {
+      try {
+        ctx = new NativeAudio();
+        Shell.audioContexts.push(ctx);
+      } catch (err) {
+        return false;
+      }
+    }
+    Shell.bgmCtx = ctx;
+    try { if (ctx.state === "suspended") ctx.resume(); } catch (err) {}
+    try {
+      var src = Shell.bgmSource;
+      if (!src) src = ctx.createMediaElementSource(el);
+      var gain = Shell.bgmGain;
+      if (!gain || gain.context !== ctx) {
+        gain = ctx.createGain();
+        src.connect(gain);
+        gain.connect(ctx.destination);
+      }
+      Shell.bgmSource = src;
+      Shell.bgmGain = gain;
+      Shell.bgmRouted = true;
+      try { el.volume = 1; } catch (err) {}
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function ensureBgm() {
+    if (bgmEl && bgmEl.isConnected) return bgmEl;
+    var el = document.createElement("audio");
+    el.id = "mugen-bgm";
+    el.loop = true;
+    el.preload = "auto";
+    el.autoplay = false;
+    el.setAttribute("playsinline", "");
+    el.setAttribute("webkit-playsinline", "");
+    el.src = "./bgm.mp3";
+    el.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none";
+    (document.body || document.documentElement).appendChild(el);
+    bgmEl = el;
+    Shell.bgmElement = el;
+    Shell.bgmSource = null;
+    Shell.bgmRouted = false;
+    el.addEventListener("playing", function () {
+      Shell.bgmStarted = true;
+    });
+    return el;
+  }
+
+  function resumeContexts() {
+    var list = Shell.audioContexts;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].state === "suspended") {
+        try { list[i].resume(); } catch (err) {}
+      }
+    }
+  }
+
+  // Stream the file on the gesture itself. The old path waited on a full
+  // download and a WebAudio graph, which iOS rejects once the tap has ended.
+  function startBgm() {
+    var el = ensureBgm();
+    resumeContexts();
+    routeBgm(el);
+    applyBgmGain();
+    if (!el.src) el.src = "./bgm.mp3";
+    var play = el.play();
+    if (play && typeof play.then === "function") {
+      bgmTask = play.then(function () {
+        Shell.bgmStarted = true;
+        updateHud("BGM ./bgm.mp3", false);
+      }).catch(function (err) {
+        updateHud("BGM waiting for a tap" + (err && err.name ? " (" + err.name + ")" : ""), false);
+      });
+    } else {
+      Shell.bgmStarted = true;
+    }
+    return play;
+  }
+
+  function applyBgmGain() {
+    var target = Math.max(0, Math.min(1, bgmLevel()));
+    var el = Shell.bgmElement;
+    if (el) routeBgm(el);
+    if (Shell.bgmRouted && Shell.bgmGain) {
+      var param = Shell.bgmGain.gain;
+      try { param.cancelScheduledValues(0); } catch (err) {}
+      try { param.value = target; } catch (err) {}
+      return;
+    }
+    if (el) {
+      try { el.volume = target; } catch (err) {}
+    }
+  }
+  Shell.applyBgmGain = applyBgmGain;
+
+  function syncMixFromSave(raw) {
+    if (!raw) return;
+    try {
+      var save = JSON.parse(raw);
+      if (!save || !save.options) return;
+      var nextMaster = typeof save.options.master === "number" ? clamp01(save.options.master) : Shell.masterVol;
+      var nextMusic = typeof save.options.music === "number" ? clamp01(save.options.music) : Shell.musicVol;
+      if (Math.abs(nextMaster - Shell.masterVol) < 0.001 && Math.abs(nextMusic - Shell.musicVol) < 0.001) return;
+      Shell.masterVol = nextMaster;
+      Shell.musicVol = nextMusic;
+      applyBgmGain();
+    } catch (err) {}
+  }
+
+  try {
+    var nativeSetItem = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = function (key, value) {
+      nativeSetItem(key, value);
+      if (key === "sumiro.save.v1" || key === "ink_wanderer.save.v1") syncMixFromSave(value);
+    };
+  } catch (err) {}
+
+  function boot() {
+    Shell.hudEl = document.getElementById("local-hud");
+    var loadingScreen = document.getElementById("loading-screen");
+    var loadingVideo = document.getElementById("loading-video");
+    var inkFill = document.getElementById("ink-fill-group");
+    var controlsEl = document.getElementById("mobile-controls");
+    var bootStart = performance.now();
+
+    function attachVideo(url) {
+      if (!loadingVideo || !url) return;
+      loadingVideo.muted = true;
+      loadingVideo.defaultMuted = true;
+      loadingVideo.playsInline = true;
+      loadingVideo.setAttribute("playsinline", "");
+      loadingVideo.src = url;
+      var p = loadingVideo.play();
+      if (p && typeof p.then === "function") {
+        p.then(function () { loadingVideoReady = true; }).catch(function () {});
+      }
+      loadingVideo.addEventListener("playing", function () { loadingVideoReady = true; });
+      loadingVideo.addEventListener("error", function () { loadingVideoFailed = true; });
+    }
+    loadingVideoTask.then(function (url) { if (url) attachVideo(url); });
+
+    function unlockAudio() {
+      if (loadingVideo && loadingVideo.src && loadingVideo.paused) {
+        loadingVideo.play().then(function () { loadingVideoReady = true; }).catch(function () {});
+      }
+      startBgm();
+    }
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("touchend", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio);
+
+    var ctrlEnabled = true;
+    var sawNativeMenu = false;
+    var trackedMenu = new Set();
+    var activeKeys = new Set();
+    var gait = "run";
+    var gameplayTouchReadyAt = 0;
+
+    function setGameState(next) {
+      var normalized = next === "playing" ? "playing" : "menu";
+      if (Shell.gameState === normalized && document.body.dataset.gameState === normalized) return;
+      Shell.gameState = normalized;
+      window.gameState = normalized;
+      document.body.dataset.gameState = normalized;
+      var show = normalized === "playing" && ctrlEnabled;
+      if (controlsEl) controlsEl.setAttribute("aria-hidden", String(!show));
+      if (normalized === "menu") {
+        lookTouchId = null;
+        resetJoystick();
+        releaseAllKeys();
+        if (document.exitPointerLock) document.exitPointerLock();
+        attachMenuObserver();
+      } else {
+        gameplayTouchReadyAt = performance.now() + 160;
+        setTimeout(cacheJoystickBounds, 60);
+        if (menuObserver) menuObserver.disconnect();
+      }
+      applyBgmGain(0.45);
+    }
+    window.setGameState = setGameState;
+    window.gameState = Shell.gameState;
+
+    function playingTouch() {
+      return Shell.gameState === "playing" && ctrlEnabled && performance.now() >= gameplayTouchReadyAt;
+    }
+
+    var KEY_MAP = {
+      KeyW: { key: "w", code: "KeyW", keyCode: 87 },
+      KeyS: { key: "s", code: "KeyS", keyCode: 83 },
+      KeyA: { key: "a", code: "KeyA", keyCode: 65 },
+      KeyD: { key: "d", code: "KeyD", keyCode: 68 },
+      ShiftLeft: { key: "Shift", code: "ShiftLeft", keyCode: 16 },
+      KeyC: { key: "c", code: "KeyC", keyCode: 67 },
+      Space: { key: " ", code: "Space", keyCode: 32 },
+      KeyQ: { key: "q", code: "KeyQ", keyCode: 81 },
+      KeyJ: { key: "j", code: "KeyJ", keyCode: 74 },
+      KeyK: { key: "k", code: "KeyK", keyCode: 75 },
+      KeyE: { key: "e", code: "KeyE", keyCode: 69 },
+      KeyF: { key: "f", code: "KeyF", keyCode: 70 },
+      Escape: { key: "Escape", code: "Escape", keyCode: 27 },
+      KeyP: { key: "p", code: "KeyP", keyCode: 80 }
+    };
+
+    function dispatchKey(code, pressed) {
+      var info = KEY_MAP[code];
+      if (!info) return;
+      var ev;
+      try {
+        ev = new KeyboardEvent(pressed ? "keydown" : "keyup", {
+          key: info.key,
+          code: info.code,
+          bubbles: true,
+          cancelable: true,
+          repeat: false
+        });
+      } catch (err) {
+        return;
+      }
+      try {
+        Object.defineProperty(ev, "keyCode", { get: function () { return info.keyCode; } });
+        Object.defineProperty(ev, "which", { get: function () { return info.keyCode; } });
+      } catch (err) {}
+      window.dispatchEvent(ev);
+    }
+
+    function setKey(code, pressed) {
+      if (pressed && activeKeys.has(code)) return;
+      if (!pressed && !activeKeys.has(code)) return;
+      if (pressed) activeKeys.add(code);
+      else activeKeys.delete(code);
+      dispatchKey(code, pressed);
+    }
+
+    function releaseAllKeys() {
+      Array.from(activeKeys).forEach(function (code) { setKey(code, false); });
+    }
+
+    function pulseKey(code) {
+      setKey(code, true);
+      setTimeout(function () { setKey(code, false); }, 40);
+    }
+
+    var cachedCanvas = null;
+    function getCanvas() {
+      if (cachedCanvas && cachedCanvas.isConnected) return cachedCanvas;
+      cachedCanvas = document.querySelector("canvas");
+      return cachedCanvas || document.body;
+    }
+
+    var lookDX = 0, lookDY = 0, lookX = 0, lookY = 0;
+    var lookEvent = new MouseEvent("mousemove", { bubbles: true, cancelable: true, view: window, clientX: 0, clientY: 0 });
+    var lookReusable = false;
+    try {
+      Object.defineProperty(lookEvent, "movementX", { configurable: true, get: function () { return lookDX; } });
+      Object.defineProperty(lookEvent, "movementY", { configurable: true, get: function () { return lookDY; } });
+      Object.defineProperty(lookEvent, "clientX", { configurable: true, get: function () { return lookX; } });
+      Object.defineProperty(lookEvent, "clientY", { configurable: true, get: function () { return lookY; } });
+      lookReusable = true;
+    } catch (err) { lookReusable = false; }
+
+    function dispatchLook(dx, dy, x, y) {
+      if (!dx && !dy) return;
+      if (lookReusable) {
+        lookDX = dx; lookDY = dy; lookX = x; lookY = y;
+        window.dispatchEvent(lookEvent);
+        return;
+      }
+      var ev;
+      try {
+        ev = new MouseEvent("mousemove", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: x,
+          clientY: y,
+          movementX: dx,
+          movementY: dy
+        });
+      } catch (err) {
+        ev = new MouseEvent("mousemove", { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y });
+      }
+      try {
+        Object.defineProperty(ev, "movementX", { configurable: true, get: function () { return dx; } });
+        Object.defineProperty(ev, "movementY", { configurable: true, get: function () { return dy; } });
+      } catch (err) {}
+      window.dispatchEvent(ev);
+    }
+
+    function fireMouseButton(button, isDown) {
+      var target = getCanvas();
+      var init = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: window.innerWidth * 0.5,
+        clientY: window.innerHeight * 0.5,
+        button: button,
+        buttons: isDown ? (button === 2 ? 2 : 1) : 0
+      };
+      window.dispatchEvent(new MouseEvent(isDown ? "mousedown" : "mouseup", init));
+      if (target && target !== window) target.dispatchEvent(new MouseEvent(isDown ? "mousedown" : "mouseup", Object.assign({}, init, { bubbles: false })));
+    }
+
+    var fpsFrames = 0;
+    var fpsStamp = performance.now();
+    function govern(now) {
+      fpsFrames += 1;
+      var elapsed = now - fpsStamp;
+      if (elapsed >= 1000) {
+        var fps = Math.round((fpsFrames * 1000) / elapsed);
+        fpsFrames = 0;
+        fpsStamp = now;
+        if (Shell.gameState === "playing" && Shell.loadingFinished) {
+          var floor = dprFloor(Shell.gfxMode);
+          var ceil = Shell.targetMaxDpr;
+          var next = Shell.currentDpr;
+          if (fps < 46 && next > floor) next = Math.max(floor, +(next - 0.1).toFixed(2));
+          else if (fps >= 57 && next < ceil) next = Math.min(ceil, +(next + 0.06).toFixed(2));
+          if (Math.abs(next - Shell.currentDpr) > 0.001) {
+            Shell.currentDpr = next;
+            window.dispatchEvent(new Event("resize"));
+          }
+        }
+      }
+      requestAnimationFrame(govern);
+    }
+    requestAnimationFrame(govern);
+
+    var MENU_RE = /^[-\u2013\u2014\s]*(continue|new game|chapters|options|controls|credits|resume|main menu|back|return|begin again|keep it|restart from shrine|scrolls|quit to title)\s*$/i;
+
+    function visible(el) {
+      if (!el || !el.isConnected) return false;
+      var st = window.getComputedStyle(el);
+      if (st.display === "none" || st.visibility === "hidden" || parseFloat(st.opacity) <= 0.05) return false;
+      var rect = el.getBoundingClientRect();
+      if (rect.width < 4 || rect.height < 4) return false;
+      var cur = el.parentElement;
+      while (cur && cur !== document.body && cur !== document.documentElement) {
+        var pst = window.getComputedStyle(cur);
+        if (pst.display === "none" || pst.visibility === "hidden" || parseFloat(pst.opacity) <= 0.05) return false;
+        cur = cur.parentElement;
+      }
+      return true;
+    }
+
+    function bindCleanTap(el, custom) {
+      if (!el || el.dataset.cleanTap === "1") return;
+      el.dataset.cleanTap = "1";
+      var startX = 0;
+      var startY = 0;
+      var last = 0;
+      var synth = false;
+      el.addEventListener("touchstart", function (e) {
+        if (e.touches.length === 1) {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+      el.addEventListener("touchend", function (e) {
+        var t = e.changedTouches[0];
+        if (!t) return;
+        if (Math.hypot(t.clientX - startX, t.clientY - startY) > 22) return;
+        var now = performance.now();
+        if (now - last < 320) {
+          e.preventDefault();
+          return;
+        }
+        last = now;
+        e.preventDefault();
+        e.stopPropagation();
+        if (custom) custom(e);
+        else {
+          synth = true;
+          el.click();
+          synth = false;
+        }
+      }, { passive: false });
+      el.addEventListener("click", function (e) {
+        var now = performance.now();
+        if (!synth && now - last < 320) {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          return;
+        }
+        last = now;
+        if (custom) {
+          e.stopPropagation();
+          custom(e);
+        }
+      }, true);
+    }
+
+    function bindBars() {
+      var bars = document.querySelectorAll(".bar");
+      for (var i = 0; i < bars.length; i++) {
+        (function (bar) {
+          if (bar.dataset.mugenBar === "1") return;
+          if (bar.closest("#mobile-controls, #top-bar, #side-bar, #loading-screen, #local-hud")) return;
+          bar.dataset.mugenBar = "1";
+          var send = function (clientX) {
+            var rect = bar.getBoundingClientRect();
+            if (rect.width < 8) return;
+            var x = Math.min(rect.right - 1, Math.max(rect.left + 1, clientX));
+            bar.dispatchEvent(new MouseEvent("click", {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+              clientX: x,
+              clientY: rect.top + rect.height * 0.5
+            }));
+          };
+          bar.addEventListener("touchstart", function (e) {
+            if (Shell.gameState !== "menu" || !e.touches[0]) return;
+            e.stopPropagation();
+            send(e.touches[0].clientX);
+          }, { passive: true });
+          bar.addEventListener("touchmove", function (e) {
+            if (Shell.gameState !== "menu" || !e.touches[0]) return;
+            e.preventDefault();
+            send(e.touches[0].clientX);
+          }, { passive: false });
+        })(bars[i]);
+      }
+    }
+
+    var syncScheduled = false;
+    var syncFull = false;
+    function scheduleSync(full) {
+      syncFull = syncFull || full;
+      if (syncScheduled) return;
+      syncScheduled = true;
+      requestAnimationFrame(function () {
+        syncScheduled = false;
+        var fullNow = syncFull;
+        syncFull = false;
+        syncMenu(fullNow);
+      });
+    }
+
+    function syncMenu(full) {
+      if (document.title !== "Mugen") document.title = "Mugen";
+      if (!full && Shell.gameState === "playing" && trackedMenu.size) {
+        var open = false;
+        trackedMenu.forEach(function (el) { if (visible(el)) open = true; });
+        if (open) setGameState("menu");
+        return;
+      }
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+      var anyMenu = false;
+      var node;
+      while ((node = walker.nextNode())) {
+        var parent = node.parentElement;
+        if (!parent) continue;
+        var tag = parent.tagName;
+        if (tag === "SCRIPT" || tag === "STYLE" || parent.closest("#local-hud, #top-bar, #side-bar, #mobile-controls, #loading-screen")) continue;
+        var raw = node.nodeValue || "";
+        if (/\bsumiro\b/i.test(raw)) {
+          node.nodeValue = raw.replace(/\bsumiro\b/gi, "Mugen");
+          parent.classList.add("mugen-calligraphic-title");
+        } else if (/^\s*mugen\s*$/i.test(raw)) {
+          parent.classList.add("mugen-calligraphic-title");
+        }
+        var text = (parent.textContent || "").trim();
+        if (!MENU_RE.test(text)) continue;
+        trackedMenu.add(parent);
+        bindCleanTap(parent);
+        if (visible(parent)) anyMenu = true;
+      }
+      ensureGfxRow();
+      bindBars();
+      if (anyMenu) {
+        sawNativeMenu = true;
+        setGameState("menu");
+      } else if (sawNativeMenu && Shell.gameState === "menu") {
+        setGameState("playing");
+      }
+    }
+
+    var menuObserver = new MutationObserver(function (records) {
+      var ink = document.getElementById("ink-ui");
+      if (ink && menuObserverRoot !== ink) {
+        menuObserverRoot = null;
+        attachMenuObserver();
+      }
+      var structural = false;
+      for (var i = 0; i < records.length; i++) {
+        if (records[i].type === "childList") structural = true;
+      }
+      scheduleSync(structural || Shell.gameState !== "playing");
+    });
+    var menuObserverRoot = null;
+    function attachMenuObserver() {
+      if (Shell.gameState === "playing") {
+        menuObserver.disconnect();
+        menuObserverRoot = null;
+        return;
+      }
+      var ink = document.getElementById("ink-ui");
+      var root = ink || document.body;
+      if (menuObserverRoot === root) return;
+      menuObserver.disconnect();
+      menuObserverRoot = root;
+      menuObserver.observe(root, ink ? {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "hidden"]
+      } : { childList: true, subtree: false });
+    }
+    attachMenuObserver();
+    syncMenu(true);
+
+    window.addEventListener("keydown", function (e) {
+      if (e.code === "Escape" || e.code === "KeyP") setTimeout(function () { scheduleSync(true); }, 50);
+    });
+
+    var btnCtrl = document.getElementById("btn-toggle-ui");
+    var btnMenu = document.getElementById("btn-pause-menu");
+    var GFX_MODES = ["auto", "1.5", "1.85"];
+    var GFX_NAME = { auto: "auto", "1.5": "hd", "1.85": "ultra" };
+
+    function applyGfx(mode) {
+      if (GFX_MODES.indexOf(mode) === -1) mode = "auto";
+      Shell.gfxMode = mode;
+      try { localStorage.setItem("mugen_gfx_mode", mode); } catch (err) {}
+      applyProfile(mode);
+      Shell.currentDpr = Math.max(1, Math.min(dprFor(mode), Shell.nativeDpr));
+      Shell.targetMaxDpr = Math.max(Shell.currentDpr, Math.min(dprCeil(mode), Shell.nativeDpr));
+      window.dispatchEvent(new Event("resize"));
+      var row = document.querySelector("#ink-ui li.mugen-gfx");
+      if (row) paintGfxRow(row);
+    }
+
+    function paintGfxRow(row) {
+      var name = GFX_NAME[Shell.gfxMode] || GFX_NAME.auto;
+      var val = row.querySelector(".val");
+      if (val && val.textContent !== name) val.textContent = name;
+    }
+
+    function ensureGfxRow() {
+      var head = document.querySelector("#ink-ui .menu.on h1");
+      if (!head || (head.textContent || "").trim() !== "Options") return;
+      var menu = head.closest(".menu");
+      var ul = menu && menu.querySelector("ul");
+      if (!ul) return;
+      var row = ul.querySelector("li.mugen-gfx");
+      if (!row) {
+        row = document.createElement("li");
+        row.className = "row mugen-gfx";
+        row.innerHTML = "<span>Graphics</span><span class=\"val\"></span>";
+        ul.insertBefore(row, ul.firstChild);
+        row.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var i = GFX_MODES.indexOf(Shell.gfxMode);
+          applyGfx(GFX_MODES[(i + 1) % GFX_MODES.length]);
+        });
+      }
+      paintGfxRow(row);
+    }
+
+    bindCleanTap(btnCtrl, function () {
+      ctrlEnabled = !ctrlEnabled;
+      document.body.classList.toggle("ctrl-off", !ctrlEnabled);
+      btnCtrl.textContent = ctrlEnabled ? "CTRL: ON" : "CTRL: OFF";
+      btnCtrl.classList.toggle("active", ctrlEnabled);
+      if (controlsEl) controlsEl.setAttribute("aria-hidden", String(!(Shell.gameState === "playing" && ctrlEnabled)));
+      if (!ctrlEnabled) {
+        resetJoystick();
+        releaseAllKeys();
+      }
+    });
+    bindCleanTap(btnMenu, function () {
+      pulseKey("Escape");
+      setTimeout(function () { scheduleSync(true); }, 70);
+    });
+
+    function finishLoading() {
+      if (Shell.loadingFinished || !loadingScreen) return;
+      Shell.loadingFinished = true;
+      Shell.targetProgress = 1;
+      Shell.displayedProgress = 1;
+      if (inkFill) inkFill.setAttribute("transform", "translate(0, 0)");
+      loadingScreen.classList.add("fade-out");
+      syncMenu(true);
+      startBgm();
+      setTimeout(function () {
+        if (loadingVideo) {
+          try { loadingVideo.pause(); } catch (err) {}
+          loadingVideo.removeAttribute("src");
+          try { loadingVideo.load(); } catch (err) {}
+        }
+        if (loadingVideoURL) URL.revokeObjectURL(loadingVideoURL);
+        loadingScreen.remove();
+      }, 800);
+    }
+
+    if (loadingScreen) {
+      loadingScreen.addEventListener("pointerdown", function () {
+        if (performance.now() - bootStart > 7000) finishLoading();
+      });
+    }
+
+    function tickBar(now) {
+      if (Shell.loadingFinished) return;
+      var elapsed = now - bootStart;
+      var idle = now - Shell.lastAssetTime;
+      var outstanding = Shell.totalAssets - Shell.loadedAssets;
+      var hasCanvas = !!document.querySelector("canvas");
+      var assetsQuiet = hasCanvas && elapsed > 1600 && outstanding <= 0 && Shell.pendingHeavy === 0 && idle > 700;
+      var videoOk = loadingVideoReady || loadingVideoFailed || elapsed > 9000;
+      if ((assetsQuiet && videoOk) || (hasCanvas && elapsed > 22000) || elapsed > 28000) {
+        Shell.targetProgress = 1;
+      }
+      Shell.displayedProgress += (Shell.targetProgress - Shell.displayedProgress) * 0.09;
+      if (Shell.targetProgress === 1 && Shell.displayedProgress > 0.985) Shell.displayedProgress = 1;
+      if (inkFill) {
+        var offset = -520 * (1 - Shell.displayedProgress);
+        inkFill.setAttribute("transform", "translate(" + offset.toFixed(1) + ", 0)");
+      }
+      if (Shell.displayedProgress >= 1) {
+        finishLoading();
+        return;
+      }
+      requestAnimationFrame(tickBar);
+    }
+    requestAnimationFrame(tickBar);
+
+    var joyZone = document.getElementById("joystick-zone");
+    var joyKnob = document.getElementById("joystick-knob");
+    var btnSprint = document.getElementById("btn-sprint");
+    var joyTouchId = null;
+    var lookTouchId = null;
+    var maxRadius = 46;
+    var joyCenterX = 90;
+    var joyCenterY = window.innerHeight - 92;
+
+    function cacheJoystickBounds() {
+      if (!joyZone) return;
+      var rect = joyZone.getBoundingClientRect();
+      if (rect.width > 0) {
+        joyCenterX = rect.left + rect.width * 0.5;
+        joyCenterY = rect.top + rect.height * 0.5;
+      }
+    }
+    window.addEventListener("resize", cacheJoystickBounds, { passive: true });
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", cacheJoystickBounds, { passive: true });
+
+    function updateSprintUi() {
+      if (!btnSprint) return;
+      var sub = btnSprint.querySelector(".sub");
+      btnSprint.classList.toggle("locked", gait !== "run");
+      if (joyKnob) {
+        joyKnob.classList.toggle("sprinting", gait === "sprint");
+        joyKnob.classList.toggle("walking", gait === "walk");
+      }
+      var label = gait === "sprint" ? "SPRINT" : gait === "walk" ? "WALK" : "RUN";
+      if (btnSprint.firstChild) btnSprint.firstChild.nodeValue = label;
+      if (sub) sub.textContent = gait === "run" ? "DEFAULT" : "ON";
+    }
+
+    function applyGait(moving) {
+      if (!moving || gait === "run") {
+        setKey("KeyC", false);
+        setKey("ShiftLeft", false);
+        return;
+      }
+      if (gait === "walk") {
+        setKey("ShiftLeft", false);
+        setKey("KeyC", true);
+      } else {
+        setKey("KeyC", false);
+        setKey("ShiftLeft", true);
+      }
+    }
+
+    function resetJoystick() {
+      joyTouchId = null;
+      if (joyKnob) joyKnob.style.transform = "translate3d(0px, 0px, 0)";
+      setKey("KeyW", false);
+      setKey("KeyS", false);
+      setKey("KeyA", false);
+      setKey("KeyD", false);
+      setKey("KeyC", false);
+      setKey("ShiftLeft", false);
+    }
+
+    function updateJoystick(clientX, clientY) {
+      var dx = clientX - joyCenterX;
+      var dy = clientY - joyCenterY;
+      var dist = Math.hypot(dx, dy);
+      if (dist > maxRadius) {
+        dx = (dx / dist) * maxRadius;
+        dy = (dy / dist) * maxRadius;
+      }
+      if (joyKnob) joyKnob.style.transform = "translate3d(" + dx.toFixed(1) + "px, " + dy.toFixed(1) + "px, 0)";
+      var nx = dx / maxRadius;
+      var ny = dy / maxRadius;
+      var dead = 0.2;
+      var moving = dist / maxRadius > dead;
+      setKey("KeyW", ny < -dead);
+      setKey("KeyS", ny > dead);
+      setKey("KeyA", nx < -dead);
+      setKey("KeyD", nx > dead);
+      applyGait(moving);
+    }
+
+    if (joyZone) {
+      joyZone.addEventListener("touchstart", function (e) {
+        if (!playingTouch()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        cacheJoystickBounds();
+        var t = e.changedTouches[0];
+        joyTouchId = t.identifier;
+        updateJoystick(t.clientX, t.clientY);
+      }, { passive: false });
+      joyZone.addEventListener("touchmove", function (e) {
+        if (!playingTouch()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        for (var i = 0; i < e.changedTouches.length; i++) {
+          var t = e.changedTouches[i];
+          if (t.identifier === joyTouchId) {
+            updateJoystick(t.clientX, t.clientY);
+            break;
+          }
+        }
+      }, { passive: false });
+      function endJoy(e) {
+        var touches = e.changedTouches || [];
+        for (var i = 0; i < touches.length; i++) {
+          if (touches[i].identifier === joyTouchId) {
+            resetJoystick();
+            return;
+          }
+        }
+      }
+      joyZone.addEventListener("touchend", endJoy);
+      joyZone.addEventListener("touchcancel", endJoy);
+    }
+
+    var lookZone = document.getElementById("look-zone");
+    var lastLookX = 0;
+    var lastLookY = 0;
+    var pendingDx = 0;
+    var pendingDy = 0;
+    var lastClientX = 0;
+    var lastClientY = 0;
+    var lookQueued = false;
+    var lookSens = 2.15;
+
+    function flushLook() {
+      lookQueued = false;
+      var mx = pendingDx;
+      var my = pendingDy;
+      pendingDx = 0;
+      pendingDy = 0;
+      var rx = mx >= 0 ? Math.floor(mx) : Math.ceil(mx);
+      var ry = my >= 0 ? Math.floor(my) : Math.ceil(my);
+      pendingDx += mx - rx;
+      pendingDy += my - ry;
+      if (rx || ry) dispatchLook(rx, ry, lastClientX, lastClientY);
+    }
+
+    if (lookZone) {
+      lookZone.addEventListener("touchstart", function (e) {
+        if (!playingTouch() || lookTouchId !== null) return;
+        var t = e.changedTouches[0];
+        lookTouchId = t.identifier;
+        lastLookX = t.clientX;
+        lastLookY = t.clientY;
+        pendingDx = 0;
+        pendingDy = 0;
+      }, { passive: true });
+      lookZone.addEventListener("touchmove", function (e) {
+        if (!playingTouch()) return;
+        for (var i = 0; i < e.changedTouches.length; i++) {
+          var t = e.changedTouches[i];
+          if (t.identifier !== lookTouchId) continue;
+          e.preventDefault();
+          pendingDx += (t.clientX - lastLookX) * lookSens;
+          pendingDy += (t.clientY - lastLookY) * lookSens;
+          lastLookX = t.clientX;
+          lastLookY = t.clientY;
+          lastClientX = t.clientX;
+          lastClientY = t.clientY;
+          if (!lookQueued) {
+            lookQueued = true;
+            requestAnimationFrame(flushLook);
+          }
+          break;
+        }
+      }, { passive: false });
+      function endLook(e) {
+        var touches = e.changedTouches || [];
+        for (var i = 0; i < touches.length; i++) {
+          if (touches[i].identifier === lookTouchId) {
+            lookTouchId = null;
+            pendingDx = 0;
+            pendingDy = 0;
+            return;
+          }
+        }
+      }
+      lookZone.addEventListener("touchend", endLook);
+      lookZone.addEventListener("touchcancel", endLook);
+
+      var lastMouse = null;
+      lookZone.addEventListener("click", function () {
+        if (Shell.gameState !== "playing") return;
+        var canvas = getCanvas();
+        if (canvas && canvas.requestPointerLock) canvas.requestPointerLock();
+      });
+      lookZone.addEventListener("mousemove", function (e) {
+        if (Shell.gameState !== "playing") return;
+        if (e.movementX || e.movementY) {
+          lastMouse = null;
+          return;
+        }
+        if (lastMouse) {
+          var dx = e.clientX - lastMouse.x;
+          var dy = e.clientY - lastMouse.y;
+          if (dx || dy) dispatchLook(dx, dy, e.clientX, e.clientY);
+        }
+        lastMouse = { x: e.clientX, y: e.clientY };
+      });
+    }
+
+    function bindHold(id, onDown, onUp) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var touchId = null;
+      el.addEventListener("touchstart", function (e) {
+        if (!playingTouch() || touchId !== null) return;
+        e.preventDefault();
+        e.stopPropagation();
+        touchId = e.changedTouches[0].identifier;
+        el.classList.add("pressed");
+        onDown();
+      }, { passive: false });
+      function finish(e) {
+        var mine = false;
+        var touches = e.changedTouches || [];
+        for (var i = 0; i < touches.length; i++) {
+          if (touches[i].identifier === touchId) mine = true;
+        }
+        if (!mine && touchId !== null) return;
+        touchId = null;
+        el.classList.remove("pressed");
+        onUp();
+      }
+      el.addEventListener("touchend", finish, { passive: false });
+      el.addEventListener("touchcancel", finish, { passive: false });
+    }
+
+    updateSprintUi();
+    if (btnSprint) {
+      btnSprint.addEventListener("touchstart", function (e) {
+        if (!playingTouch()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        gait = gait === "run" ? "sprint" : gait === "sprint" ? "walk" : "run";
+        updateSprintUi();
+        var moving = activeKeys.has("KeyW") || activeKeys.has("KeyS") || activeKeys.has("KeyA") || activeKeys.has("KeyD");
+        applyGait(moving);
+      }, { passive: false });
+    }
+
+    bindHold("btn-attack", function () {
+      setKey("KeyJ", true);
+      fireMouseButton(0, true);
+    }, function () {
+      setKey("KeyJ", false);
+      fireMouseButton(0, false);
+    });
+    bindHold("btn-parry", function () {
+      setKey("KeyK", true);
+      fireMouseButton(2, true);
+    }, function () {
+      setKey("KeyK", false);
+      fireMouseButton(2, false);
+    });
+    bindHold("btn-jump", function () { setKey("Space", true); }, function () { setKey("Space", false); });
+    bindHold("btn-ink", function () { setKey("KeyQ", true); }, function () { setKey("KeyQ", false); });
+    bindHold("btn-interact", function () { setKey("KeyE", true); }, function () { setKey("KeyE", false); });
+    bindHold("btn-gourd", function () { setKey("KeyF", true); }, function () { setKey("KeyF", false); });
+
+    window.addEventListener("blur", function () {
+      resetJoystick();
+      releaseAllKeys();
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) {
+        resumeContexts();
+        var el = Shell.bgmElement;
+        if (el && el.paused) {
+          try { el.play(); } catch (err) {}
+        }
+        applyBgmGain();
+      }
+    });
+    function kickResize() {
+      window.dispatchEvent(new Event("resize"));
+    }
+    window.addEventListener("orientationchange", function () {
+      kickResize();
+      setTimeout(kickResize, 80);
+      setTimeout(kickResize, 320);
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", kickResize);
+    }
+
+    if (Shell.audioContexts.length) startBgm();
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+  </script>
 </head>
-<body>
-    
-    <div id="loading-screen">
-        <video autoplay muted loop playsinline class="bg-video">
-            <source src="loadingscreen.mp4" type="video/mp4">
-        </video>
-        <div class="loading-overlay">
-            <p class="minimal-text">loading...</p>
-            <div class="progress-bar-container">
-                <div class="progress-bar"></div>
-            </div>
-        </div>
+<body data-game-state="menu" data-lobby="1">
+  <a id="patch-download" href="./Mugen-patched.zip" download="Mugen-patched.zip">Download zip</a>
+  <div id="lobby-bg"></div>
+  <div id="app"></div>
+  <div id="loading-screen">
+    <video id="loading-video" autoplay muted loop playsinline webkit-playsinline preload="auto"></video>
+    <div id="loading-bar-wrap">
+      <svg id="brush-bar-svg" viewBox="0 0 600 36" preserveAspectRatio="none">
+        <defs>
+          <filter id="dry-brush" x="-5%" y="-20%" width="110%" height="140%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.09 0.85" numOctaves="2" seed="7" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.4" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+          <clipPath id="brush-track-clip">
+            <path d="M 42,18 C 42,13.5 47,11.5 56,11.5 L 512,11.5 L 548,12.5 L 532,14.2 L 556,15.5 L 538,16.8 L 560,18 L 534,19.3 L 553,20.8 L 528,22.1 L 544,23.5 L 508,24.5 L 56,24.5 C 47,24.5 42,22.5 42,18 Z" />
+          </clipPath>
+        </defs>
+        <path d="M 0,18 Q 150,17.2 300,17.2 Q 450,17.2 600,18 Q 450,18.8 300,18.8 Q 150,18.8 0,18 Z" fill="#1a1714" opacity="0.72" />
+        <g clip-path="url(#brush-track-clip)" filter="url(#dry-brush)">
+          <rect x="40" y="10" width="525" height="16" fill="#e6dbc4" opacity="0.92" />
+          <line x1="480" y1="13" x2="555" y2="13" stroke="#cbbba0" stroke-width="0.9" />
+          <line x1="495" y1="17" x2="558" y2="17" stroke="#cbbba0" stroke-width="0.8" />
+          <line x1="470" y1="21" x2="548" y2="21" stroke="#cbbba0" stroke-width="1.0" />
+        </g>
+        <g clip-path="url(#brush-track-clip)" filter="url(#dry-brush)">
+          <g id="ink-fill-group" transform="translate(-520, 0)">
+            <path d="M 40,10 L 518,10 L 552,11.8 L 530,13.5 L 560,15.0 L 535,16.5 L 564,18.0 L 532,19.4 L 556,21.0 L 526,22.6 L 548,24.2 L 512,26 L 40,26 Z" fill="#1b1815" />
+            <line x1="510" y1="12.2" x2="566" y2="12.2" stroke="#1b1815" stroke-width="1.3" stroke-linecap="round" />
+            <line x1="515" y1="14.6" x2="572" y2="14.6" stroke="#1b1815" stroke-width="1.1" stroke-linecap="round" />
+            <line x1="508" y1="17.1" x2="576" y2="17.1" stroke="#1b1815" stroke-width="1.5" stroke-linecap="round" />
+            <line x1="512" y1="19.8" x2="570" y2="19.8" stroke="#1b1815" stroke-width="1.2" stroke-linecap="round" />
+            <line x1="506" y1="22.4" x2="562" y2="22.4" stroke="#1b1815" stroke-width="1.4" stroke-linecap="round" />
+          </g>
+        </g>
+      </svg>
     </div>
-
-    <div id="character-select-screen">
-        <div class="cards-container">
-            <div class="char-card" id="card-boy" onclick="selectCharacter('boy')">
-                <div class="canvas-container" id="canvas-boy-box"></div>
-            </div>
-            <div class="char-card" id="card-girl" onclick="selectCharacter('girl')">
-                <div class="canvas-container" id="canvas-girl-box"></div>
-            </div>
-        </div>
+  </div>
+  <div id="top-bar">
+    <button id="btn-pause-menu" class="mini-btn" type="button">MENU</button>
+  </div>
+  <div id="side-bar">
+    <button id="btn-toggle-ui" class="mini-btn active" type="button">CTRL: ON</button>
+  </div>
+  <div id="local-hud"></div>
+  <div id="mobile-controls" aria-hidden="true">
+    <div id="look-zone"></div>
+    <div id="joystick-zone"><div id="joystick-knob"></div></div>
+    <div id="action-cluster">
+      <div id="btn-jump" class="ctrl-btn">JUMP<span class="sub">SPACE</span></div>
+      <div id="btn-attack" class="ctrl-btn">ATK<span class="sub">J / LMB</span></div>
+      <div id="btn-parry" class="ctrl-btn">PARRY<span class="sub">K / RMB</span></div>
+      <div id="btn-ink" class="ctrl-btn">INK<span class="sub">Q STEP</span></div>
+      <div id="btn-sprint" class="ctrl-btn">RUN<span class="sub">DEFAULT</span></div>
+      <div id="btn-interact" class="ctrl-btn">USE<span class="sub">E</span></div>
+      <div id="btn-gourd" class="ctrl-btn">GOURD<span class="sub">F</span></div>
     </div>
-
-    <canvas id="game-canvas" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10;"></canvas>
-
-    <script type="module" src="script.js"></script>
+  </div>
+  <script type="module" src="./bundle/index-VEMJneSs.js"></script>
 </body>
 </html>
